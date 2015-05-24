@@ -1,0 +1,203 @@
+---
+title: 'Impact Of Severe Weather Events On Health & Economy'
+author: "Aasish Agarwal"
+date: "Sunday, May 24, 2015"
+output: html_document
+---
+
+## Synopsis
+Storms and other severe weather events can cause both public health and economic problems for communities and municipalities. Many severe events can result in fatalities, injuries, and property damage, and preventing such outcomes to the extent possible is a key concern.
+
+This report presents the results of our analysis to address following questions
+
+* Across the United States, which types of events (as indicated in the `EVTYPE` variable) are most harmful with respect to population health?
+* Across the United States, which types of events have the greatest economic consequences?
+
+
+*NOTE*: We have used U.S. National Oceanic and Atmospheric Administration's (NOAA) [storm database](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2) for this study. More details about this database are available under Appendix.
+
+
+## Data Processing
+There should be a section titled Data Processing which describes (in words and code) how the data were loaded into R and processed for analysis. In particular, your analysis must start from the raw CSV file containing the data. You cannot do any preprocessing outside the document. If preprocessing is time-consuming you may consider using the cache = TRUE option for certain code chunks.
+
+##### Analysis Environment
+```{r, results='markup'}
+
+sessionInfo()
+
+data.frame(Sys.info())
+
+```
+
+##### Packages Used
+####### TODO
+```{r, results='markup'}
+library(dplyr)
+library(ggplot2)
+```
+
+##### Downloading and Uncompressing [NOAA storm database](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2)
+```{r, results='markup'}
+  url <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+  # Creating folder named data to download the dataset
+  if (! file.exists("data")){
+    dir.create("data")
+  } 
+  projectDatafile <- "data/StormData.csv.bz2"
+
+  # Downloadoing data set if not already exists
+  if (! file.exists(projectDatafile)){
+      download.file(url , projectDatafile, method = "curl")
+      cat("Download Complete")
+  } else {
+    cat("Skipping Download! File Already Available")
+  } 
+
+```
+
+Downlaoded file is in zipped format having size = `r round(file.info(projectDatafile)$size /1024/1024,0)` MB. So we are loading this in a cached `r-code block`. 
+
+
+```{r, results='markup',cache=TRUE}
+paste("Loading Dataset:- ", date())
+storm_db_full <-read.csv(bzfile(projectDatafile))
+paste("Dataset Load Complere:- ", date())
+```
+
+```{r, results='markup',cache=TRUE}
+#storm_db_full <-read.csv("data/a.csv")
+
+```
+
+We need a subset of the existing fields, to address the concerns
+
+```{r, results='markup',cache=TRUE}
+names (storm_db_full)
+
+```
+
+* EVTYPE - Type Of Event
+* FATALITIES - Number of deaths caused
+* INJURIES - Number of injuries caused
+* PROPDMG - Damages to property
+* PROPDMGEXP  - Scale Of Damages to property. This is represented in exponentials of 10.
+* CROPDMG - Damages to Crops
+* CROPDMGEXP - Scale of Damages to Crops. This is represented in exponentials of 10.
+
+PROPDMGEXP & CROPDMGEXP have following values
+
+```{r, results='markup',cache=TRUE}
+storm_db <- storm_db_full %>% tbl_df() %>%
+  select (EVTYPE, FATALITIES, INJURIES,PROPDMG, PROPDMGEXP, CROPDMG, CROPDMGEXP)   
+
+levels(storm_db$PROPDMGEXP)
+levels(storm_db$CROPDMGEXP)
+```
+
+We will now update the exponents to correct values. And calculate damages
+
+```{r, results='markup',cache=TRUE}
+
+storm_db$PROPDMGEXP <- sub("^$|[-?+]", "0",storm_db$PROPDMGEXP)
+storm_db$PROPDMGEXP <- sub("[Hh]", "2",storm_db$PROPDMGEXP)
+storm_db$PROPDMGEXP <- sub("[Kk]", "3",storm_db$PROPDMGEXP)
+storm_db$PROPDMGEXP <- sub("[Mm]", "6",storm_db$PROPDMGEXP)
+storm_db$PROPDMGEXP <- sub("[Bb]", "9",storm_db$PROPDMGEXP)
+
+storm_db$CROPDMGEXP <- sub("^$|[-?+]", "0",storm_db$CROPDMGEXP)
+storm_db$CROPDMGEXP <- sub("[Hh]", "2",storm_db$CROPDMGEXP)
+storm_db$CROPDMGEXP <- sub("[Kk]", "3",storm_db$CROPDMGEXP)
+storm_db$CROPDMGEXP <- sub("[Mm]", "6",storm_db$CROPDMGEXP)
+storm_db$CROPDMGEXP <- sub("[Bb]", "9",storm_db$CROPDMGEXP)
+
+storm_db <- storm_db %>%
+  mutate( PROPDMGEXP = as.numeric(PROPDMGEXP), CROPDMGEXP = as.numeric(CROPDMGEXP)) %>%
+  mutate(PROPDMG = PROPDMG * 10^PROPDMGEXP ,  CROPDMG = CROPDMG * 10^CROPDMGEXP) %>%
+  group_by(EVTYPE ) %>%
+  summarize( FATALITIES = sum(FATALITIES), INJURIES = sum(INJURIES), DAMAGES = sum(PROPDMG) + sum(CROPDMG))
+```
+
+Next we will get top 10 events in each category
+
+* Highest Fatalities
+* Highest Injuries
+* Highest Damages
+
+
+```{r, results='markup',cache=TRUE}
+top_fatalities <- storm_db %>%
+  select(EVTYPE, FATALITIES) %>%
+  arrange(desc(FATALITIES) ) %>%
+  head(10)
+
+
+top_injuries <- storm_db %>%
+  select(EVTYPE, INJURIES) %>%
+  arrange(desc(INJURIES) ) %>%
+  head(10)
+
+top_damages <- storm_db %>%
+  select(EVTYPE, DAMAGES) %>%
+  arrange(desc(DAMAGES) ) %>%
+  head(10)
+
+```
+
+
+## Results
+
+* Across the United States, which types of events (as indicated in the `EVTYPE` variable) are most harmful with respect to population health?
+
+
+#### Maximum Fatalities
+
+```{r, results='markup'}
+top_fatalities
+
+ggplot(top_fatalities, aes(EVTYPE, FATALITIES)) + geom_bar(stat = "identity") + 
+    xlab("Event Type") + ylab("Number of Fatalities") + ggtitle("Fatalities by Event type")+
+    theme(axis.text.x = element_text(angle = 45, hjust=1))
+```
+
+#### Maximum Injuries
+
+```{r, results='markup'}
+top_injuries
+ggplot(top_injuries, aes(EVTYPE, INJURIES)) + geom_bar(stat = "identity") + 
+    xlab("Event Type") + ylab("Number of Injuries") + ggtitle("Injuries by Event type")+
+    theme(axis.text.x = element_text(angle = 45, hjust=1))
+
+```
+
+
+* Across the United States, which types of events have the greatest economic consequences?
+
+#### Maximum Damages
+
+```{r, results='markup'}
+top_damages
+ggplot(top_damages, aes(EVTYPE, DAMAGES)) + geom_bar(stat = "identity") + 
+    xlab("Event Type") + ylab("Amount Of Damages") + ggtitle("Damages by Event type")+
+    theme(axis.text.x = element_text(angle = 45, hjust=1))
+
+```
+
+
+
+## Disclaimer
+Any decisions made using this report as a reference is the sole responsibility of the reader. Author is not liable for any claims of any concequences of any such actions.
+
+## Appendix
+
+### NOAA Storm Database
+This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage.
+
+
+There is also some documentation of the database available. Here you will find how some of the variables are constructed/defined.
+
+* National Weather Service [Storm Data Documentation](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf)
+
+* National Climatic Data Center Storm Events [FAQ](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2FNCDC%20Storm%20Events-FAQ%20Page.pdf)
+
+The events in the database start in the year 1950 and end in November 2011. In the earlier years of the database there are generally fewer events recorded, most likely due to a lack of good records. More recent years should be considered more complete.
+
